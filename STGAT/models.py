@@ -6,9 +6,9 @@ import random
 
 def get_noise(shape, noise_type):
     if noise_type == "gaussian":
-        return torch.randn(*shape).cuda()
+        return torch.randn(*shape) #.cuda()
     elif noise_type == "uniform":
-        return torch.rand(*shape).sub_(0.5).mul_(2.0).cuda()
+        return torch.rand(*shape).sub_(0.5).mul_(2.0)#.cuda()
     raise ValueError('Unrecognized noise type "%s"' % noise_type)
 
 
@@ -36,14 +36,14 @@ class BatchMultiHeadGraphAttention(nn.Module):
         nn.init.xavier_uniform_(self.a_src, gain=1.414)
         nn.init.xavier_uniform_(self.a_dst, gain=1.414)
 
-    def forward(self, h):
+    def forward(self, h):       # [obsL, n, hdim]
         bs, n = h.size()[:2]
-        h_prime = torch.matmul(h.unsqueeze(1), self.w)
-        attn_src = torch.matmul(h_prime, self.a_src)
+        h_prime = torch.matmul(h.unsqueeze(1), self.w)      # [obsL, n_head, n, hdim]
+        attn_src = torch.matmul(h_prime, self.a_src)        # [obsL, n_head, n, 1] = [8,4,21,1]
         attn_dst = torch.matmul(h_prime, self.a_dst)
         attn = attn_src.expand(-1, -1, -1, n) + attn_dst.expand(-1, -1, -1, n).permute(
             0, 1, 3, 2
-        )
+        )       # [8, 4, 21, 21]
         attn = self.leaky_relu(attn)
         attn = self.softmax(attn)
         attn = self.dropout(attn)
@@ -82,20 +82,20 @@ class GAT(nn.Module):
             )
 
         self.norm_list = [
-            torch.nn.InstanceNorm1d(32).cuda(),
-            torch.nn.InstanceNorm1d(64).cuda(),
+            torch.nn.InstanceNorm1d(32),
+            torch.nn.InstanceNorm1d(64), # .cuda()
         ]
 
     def forward(self, x):
         bs, n = x.size()[:2]
         for i, gat_layer in enumerate(self.layer_stack):
             x = self.norm_list[i](x.permute(0, 2, 1)).permute(0, 2, 1)
-            x, attn = gat_layer(x)
+            x, attn = gat_layer(x)      # x [8,4,21,16] = [obsL, n_head, n, hdim/n_head]
             if i + 1 == self.n_layer:
                 x = x.squeeze(dim=1)
             else:
                 x = F.elu(x.transpose(1, 2).contiguous().view(bs, n, -1))
-                x = F.dropout(x, self.dropout, training=self.training)
+                x = F.dropout(x, self.dropout, training=self.training)      # [obsL, n, hdim]
         else:
             return x
 
@@ -167,14 +167,14 @@ class TrajectoryGenerator(nn.Module):
 
     def init_hidden_traj_lstm(self, batch):
         return (
-            torch.randn(batch, self.traj_lstm_hidden_size).cuda(),
-            torch.randn(batch, self.traj_lstm_hidden_size).cuda(),
+            torch.randn(batch, self.traj_lstm_hidden_size),
+            torch.randn(batch, self.traj_lstm_hidden_size),
         )
 
     def init_hidden_graph_lstm(self, batch):
         return (
-            torch.randn(batch, self.graph_lstm_hidden_size).cuda(),
-            torch.randn(batch, self.graph_lstm_hidden_size).cuda(),
+            torch.randn(batch, self.graph_lstm_hidden_size),
+            torch.randn(batch, self.graph_lstm_hidden_size),
         )
 
     def add_noise(self, _input, seq_start_end):
@@ -194,14 +194,14 @@ class TrajectoryGenerator(nn.Module):
 
     def forward(
         self,
-        obs_traj_rel,
-        obs_traj_pos,
+        obs_traj_rel,       # [obsL, sum_len, xy] = [8, 1413, 2]
+        obs_traj_pos,       # rel: 相对delta, pos是实际的位置
         seq_start_end,
         teacher_forcing_ratio=0.5,
         training_step=3,
     ):
         batch = obs_traj_rel.shape[1]
-        traj_lstm_h_t, traj_lstm_c_t = self.init_hidden_traj_lstm(batch)
+        traj_lstm_h_t, traj_lstm_c_t = self.init_hidden_traj_lstm(batch)        # [batch=sum_len, hidden_size] = [1413, 32]
         graph_lstm_h_t, graph_lstm_c_t = self.init_hidden_graph_lstm(batch)
         pred_traj_rel = []
         traj_lstm_hidden_states = []
@@ -213,13 +213,13 @@ class TrajectoryGenerator(nn.Module):
         ):
             traj_lstm_h_t, traj_lstm_c_t = self.traj_lstm_model(
                 input_t.squeeze(0), (traj_lstm_h_t, traj_lstm_c_t)
-            )
+            )       # 时间步更新
             if training_step == 1:
-                output = self.traj_hidden2pos(traj_lstm_h_t)
+                output = self.traj_hidden2pos(traj_lstm_h_t)        # 变为xy [batch, 2] = [1413,2]
                 pred_traj_rel += [output]
             else:
                 traj_lstm_hidden_states += [traj_lstm_h_t]
-        if training_step == 2:
+        if training_step == 2:  # [obsL, batch, hidden_size] -> [obsL, batch, hidden_size]
             graph_lstm_input = self.gatencoder(
                 torch.stack(traj_lstm_hidden_states), seq_start_end
             )
@@ -229,7 +229,7 @@ class TrajectoryGenerator(nn.Module):
                 )
                 encoded_before_noise_hidden = torch.cat(
                     (traj_lstm_hidden_states[i], graph_lstm_h_t), dim=1
-                )
+                )       # [batch, hidden_size*2]
                 output = self.traj_gat_hidden2pos(encoded_before_noise_hidden)
                 pred_traj_rel += [output]
 
@@ -249,14 +249,14 @@ class TrajectoryGenerator(nn.Module):
 
         if training_step == 1 or training_step == 2:
             return torch.stack(pred_traj_rel)
-        else:
+        else:   # [batch, hidden_size*2]
             encoded_before_noise_hidden = torch.cat(
                 (traj_lstm_hidden_states[-1], graph_lstm_hidden_states[-1]), dim=1
             )
             pred_lstm_hidden = self.add_noise(
                 encoded_before_noise_hidden, seq_start_end
             )
-            pred_lstm_c_t = torch.zeros_like(pred_lstm_hidden).cuda()
+            pred_lstm_c_t = torch.zeros_like(pred_lstm_hidden)
             output = obs_traj_rel[self.obs_len-1]
             if self.training:
                 for i, input_t in enumerate(

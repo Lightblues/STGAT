@@ -140,7 +140,7 @@ def main(args):
         noise_dim=args.noise_dim,
         noise_type=args.noise_type,
     )
-    model.cuda()
+    # model #.cuda()
     optimizer = optim.Adam(
         [
             {"params": model.traj_lstm_model.parameters(), "lr": 1e-2},
@@ -205,7 +205,7 @@ def train(args, model, train_loader, optimizer, epoch, training_step, writer):
     )
     model.train()
     for batch_idx, batch in enumerate(train_loader):
-        batch = [tensor.cuda() for tensor in batch]
+        # batch = [tensor.cuda() for tensor in batch]
         (
             obs_traj,
             pred_traj_gt,
@@ -228,7 +228,7 @@ def train(args, model, train_loader, optimizer, epoch, training_step, writer):
             l2_loss_rel.append(
                 l2_loss(pred_traj_fake_rel, model_input, loss_mask, mode="raw")
             )
-        else:
+        else:       # [obsL+predL, batch, 2]
             model_input = torch.cat((obs_traj_rel, pred_traj_gt_rel), dim=0)
             for _ in range(args.best_k):
                 pred_traj_fake_rel = model(model_input, obs_traj, seq_start_end, 0)
@@ -268,7 +268,7 @@ def validate(args, model, val_loader, epoch, writer):
     model.eval()
     with torch.no_grad():
         for i, batch in enumerate(val_loader):
-            batch = [tensor.cuda() for tensor in batch]
+            # batch = [tensor.cuda() for tensor in batch]
             (
                 obs_traj,
                 pred_traj_gt,
