@@ -8,13 +8,13 @@ import logging
 import os
 import sys
 from models.transformer.informer.informer import InformerModel
-from models.xgb.xgb import XgbModel
-from models.mlp.ae_mlp import AEMLPModel
-from models.lstm.lstm import LSTMModel
+# from models.xgb.xgb import XgbModel
+# from models.mlp.ae_mlp import AEMLPModel
+# from models.lstm.lstm import LSTMModel
 from utils.data_processing import DataReader
 
-sys.path.append("D:/work/code_repository/vacation-ai/time-series-forecast")
-os.environ["PYSPARK_PYTHON"] = "/usr/bin/python3.6.5"
+# sys.path.append("D:/work/code_repository/vacation-ai/time-series-forecast")
+# os.environ["PYSPARK_PYTHON"] = "/usr/bin/python3.6.5"
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(stream=sys.stderr, level=logging.WARNING, format=

@@ -26,7 +26,7 @@ from models.transformer.informer.attn import ProbAttention, FullAttention, Atten
 from models.transformer.informer.encoder import ConvLayer, Encoder, EncoderLayer
 from models.transformer.informer.decoder import Decoder, DecoderLayer
 
-os.environ["PYSPARK_PYTHON"] = "/usr/bin/python3.6.5"
+# os.environ["PYSPARK_PYTHON"] = "/usr/bin/python3.6.5"
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(stream=sys.stderr, level=logging.INFO, format=
