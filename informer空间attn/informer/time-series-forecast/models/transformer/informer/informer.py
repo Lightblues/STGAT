@@ -336,10 +336,11 @@ class InformerModel(BaseModel):
                               loss=self.model_params['loss'],
                               metrics=['MSE', 'MAE', 'MAPE']
                               )
+        
+        # for debug
+        seq2seq_model.run_eagerly = True
 
-#        seq2seq_model.run_eagerly = True
-
-        #        plot_model(seq2seq_model, to_file='model.png')
+        # plot_model(seq2seq_model, to_file='model.png')
         return seq2seq_model
 
 
