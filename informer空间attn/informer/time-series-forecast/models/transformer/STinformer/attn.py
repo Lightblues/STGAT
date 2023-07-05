@@ -26,10 +26,10 @@ class STFullAttention(Layer):
         V_t = tf.einsum("bnhls,bnshd->bnlhd", A_t, values)
 
         scores_s = tf.einsum("bnlhe,bmlhe->blhnm", queries, keys)
+        # 加attention mask
+        scores_s = tf.multiply(scores_s, tf.expand_dims(tf.expand_dims(attn_mask, axis=-3), axis=-4))
         A_s = self.dropout(tf.keras.activations.softmax(scale * scores_s, axis=-1))
         V = tf.einsum("blhnm,bmlhd->bnlhd", A_s, V_t)
-
-
         return V
 
 class SFullAttention(Layer):
@@ -48,6 +48,13 @@ class SFullAttention(Layer):
         scale = self.scale or 1. / sqrt(E)
 
         scores = tf.einsum("bnlhe,bmlhe->blhnm", queries, keys)
+        if attn_mask is not None:
+            # 假设原本是 0/1 mask, 转为 -inf/0 mask
+            attn_mask = tf.cast(attn_mask, tf.float32)
+            attn_mask = (1.0 - attn_mask) * -10000.0
+            # add mask
+            scores += attn_mask
+            # scores = tf.multiply(scores, tf.expand_dims(tf.expand_dims(attn_mask, axis=-3), axis=-4))
         A = self.dropout(tf.keras.activations.softmax(scale * scores, axis=-1))
         V = tf.einsum("blhnm,bmlhd->bnlhd", A, values)
 

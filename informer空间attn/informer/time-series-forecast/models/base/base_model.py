@@ -173,6 +173,7 @@ class BaseModel:
         dataset.sort_values(by=['date', 'rank', 'id'], ascending=[True, True, True], inplace=True)
         self.max_value = dataset['value'].max()
         self.dataset = dataset
+        self.id_nums = self.dataset['id'].nunique()
         self.rank_bins = self.get_rank_bins()
         logger.info(">>>>>>>>>>rank_bins:{}:".format(self.rank_bins))
 

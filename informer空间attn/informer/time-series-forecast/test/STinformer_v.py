@@ -23,9 +23,9 @@ import sys
 import os
 import multiprocessing
 from models.transformer.informer.embed import DataEmbedding
-from models.transformer.informer.attn import ProbAttention, FullAttention, AttentionLayer
-from models.transformer.informer.encoder import ConvLayer, Encoder, EncoderLayer
-from models.transformer.informer.decoder import Decoder, DecoderLayer
+from models.transformer.STinformer.attn import ProbAttention, FullAttention, SFullAttention, STFullAttention, AttentionLayer
+from models.transformer.STinformer.encoder import ConvLayer, Encoder, EncoderLayer
+from models.transformer.STinformer.decoder import Decoder, DecoderLayer
 
 os.environ["PYSPARK_PYTHON"] = "/usr/bin/python3.6.5"
 
@@ -35,9 +35,9 @@ logging.basicConfig(stream=sys.stderr, level=logging.INFO, format=
 '''[%(filename)s:%(funcName)s:%(lineno)d]: %(message)s''')
 
 
-class InformerModel(BaseModel):
+class STInformerModel(BaseModel):
     def __init__(self, args):
-        super(InformerModel, self).__init__(args)
+        super(STInformerModel, self).__init__(args)
 
         self.custom_params = json.loads(self.args.custom_params) if self.args.custom_params else {}
         self.train_date_gap = self.custom_params[
@@ -91,6 +91,70 @@ class InformerModel(BaseModel):
         self.decoder_timesteps = self.args.forecast_days
         self.decoder_timesteps_start = self.args.forecast_days_start
         self.validation_days = self.args.validation_days
+        attn_mask = [[0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0.,
+        0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+       [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 1.,
+        0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+       [1., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0.,
+        0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+       [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0.,
+        0., 0., 0., 1., 1., 1., 0., 0., 0., 1., 0., 0., 0., 0., 0.],
+       [0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+        0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0.],
+       [0., 0., 0., 0., 1., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+        0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0.],
+       [0., 0., 0., 0., 0., 1., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0.,
+        0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0.],
+       [1., 0., 1., 0., 0., 0., 1., 0., 1., 1., 1., 0., 0., 0., 0., 0.,
+        0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0.],
+       [0., 0., 0., 0., 0., 0., 0., 1., 0., 1., 1., 1., 0., 0., 0., 0.,
+        1., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+       [0., 0., 0., 0., 0., 0., 0., 1., 1., 0., 0., 0., 0., 0., 1., 0.,
+        1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+       [0., 0., 0., 0., 0., 0., 0., 1., 1., 0., 0., 1., 0., 0., 0., 0.,
+        0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0.],
+       [0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 1., 0., 1., 1., 0., 0.,
+        0., 0., 0., 1., 0., 1., 0., 0., 0., 0., 0., 1., 0., 0., 0.],
+       [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 1., 0., 0.,
+        0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 1., 1., 0., 0.],
+       [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 1., 0., 0., 0.,
+        0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0.],
+       [0., 1., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 1.,
+        1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+       [0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0.,
+        1., 1., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+       [0., 0., 0., 0., 0., 0., 0., 0., 1., 1., 0., 0., 0., 0., 1., 1.,
+        0., 1., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+       [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1.,
+        1., 0., 1., 1., 1., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0.],
+       [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1.,
+        0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0.],
+       [0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 1., 0., 0., 0., 0.,
+        1., 1., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+       [0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+        0., 1., 0., 1., 0., 0., 1., 0., 0., 1., 0., 0., 0., 0., 0.],
+       [0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 1., 1., 0., 0., 0.,
+        0., 0., 0., 0., 0., 0., 0., 0., 1., 1., 1., 0., 0., 1., 0.],
+       [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+        0., 1., 1., 0., 1., 0., 0., 1., 0., 0., 0., 0., 0., 0., 1.],
+       [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+        0., 0., 0., 0., 0., 0., 1., 0., 1., 1., 0., 0., 0., 0., 0.],
+       [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+        0., 0., 0., 0., 0., 1., 0., 1., 0., 1., 0., 0., 0., 1., 0.],
+       [0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+        0., 0., 0., 0., 1., 1., 0., 1., 1., 0., 0., 0., 0., 0., 0.],
+       [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0.,
+        0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 1., 1., 0.],
+       [0., 0., 0., 0., 1., 1., 1., 1., 0., 0., 1., 1., 1., 1., 0., 0.,
+        0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+       [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0.,
+        0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0.],
+       [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+        0., 0., 0., 0., 0., 1., 0., 0., 1., 0., 1., 0., 0., 0., 0.],
+       [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+        0., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0.]]
+        self.attn_mask =  tf.convert_to_tensor(attn_mask)
+
 
     def train_model(self):
         logger.info(">>>>>>>>>>Start training model:")
@@ -181,53 +245,53 @@ class InformerModel(BaseModel):
 
             for x in prs:
                 data = x.get()
-                train_encoder_dense_input_data.extend(data[0])
-                train_encoder_sparse_input_data.extend(data[1])
-                train_decoder_dense_input_data.extend(data[2])
-                train_decoder_sparse_input_data.extend(data[3])
-                train_output_data.extend(data[4])
-                train_weight_data.extend(data[5])
-                train_encoder_pos_data.extend(data[6])
-                train_decoder_pos_data.extend(data[7])
-                val_encoder_dense_input_data.extend(data[8])
-                val_encoder_sparse_input_data.extend(data[9])
-                val_decoder_dense_input_data.extend(data[10])
-                val_decoder_sparse_input_data.extend(data[11])
-                val_output_data.extend(data[12])
-                val_weight_data.extend(data[13])
-                val_encoder_pos_data.extend(data[14])
-                val_decoder_pos_data.extend(data[15])
-                predict_encoder_dense_input_data.extend(data[16])
-                predict_encoder_sparse_input_data.extend(data[17])
-                predict_encoder_pos_data.extend(data[18])
-                predict_decoder_dense_input_data.extend(data[19])
-                predict_decoder_sparse_input_data.extend(data[20])
-                predict_decoder_pos_data.extend(data[21])
+                train_encoder_dense_input_data.append(data[0])
+                train_encoder_sparse_input_data.append(data[1])
+                train_decoder_dense_input_data.append(data[2])
+                train_decoder_sparse_input_data.append(data[3])
+                train_output_data.append(data[4])
+                train_weight_data.append(data[5])
+                train_encoder_pos_data.append(data[6])
+                train_decoder_pos_data.append(data[7])
+                val_encoder_dense_input_data.append(data[8])
+                val_encoder_sparse_input_data.append(data[9])
+                val_decoder_dense_input_data.append(data[10])
+                val_decoder_sparse_input_data.append(data[11])
+                val_output_data.append(data[12])
+                val_weight_data.append(data[13])
+                val_encoder_pos_data.append(data[14])
+                val_decoder_pos_data.append(data[15])
+                predict_encoder_dense_input_data.append(data[16])
+                predict_encoder_sparse_input_data.append(data[17])
+                predict_encoder_pos_data.append(data[18])
+                predict_decoder_dense_input_data.append(data[19])
+                predict_decoder_sparse_input_data.append(data[20])
+                predict_decoder_pos_data.append(data[21])
 
-            train_encoder_dense_input_data = np.array(train_encoder_dense_input_data)
-            train_encoder_sparse_input_data = np.array(train_encoder_sparse_input_data)
-            train_decoder_dense_input_data = np.array(train_decoder_dense_input_data)
-            train_decoder_sparse_input_data = np.array(train_decoder_sparse_input_data)
-            train_output_data = np.array(train_output_data)
-            train_weight_data = np.array(train_weight_data)
-            train_encoder_pos_data = np.array(train_encoder_pos_data)
-            train_decoder_pos_data = np.array(train_decoder_pos_data)
+            train_encoder_dense_input_data = np.array(list(map(list, zip(*train_encoder_dense_input_data))))
+            train_encoder_sparse_input_data = np.array(list(map(list, zip(*train_encoder_sparse_input_data))))
+            train_decoder_dense_input_data = np.array(list(map(list, zip(*train_decoder_dense_input_data))))
+            train_decoder_sparse_input_data = np.array(list(map(list, zip(*train_decoder_sparse_input_data))))
+            train_output_data = np.array(list(map(list, zip(*train_output_data))))
+            train_weight_data = np.array(list(map(list, zip(*train_weight_data))))
+            train_encoder_pos_data = np.array(list(map(list, zip(*train_encoder_pos_data))))
+            train_decoder_pos_data = np.array(list(map(list, zip(*train_decoder_pos_data))))
 
-            val_encoder_dense_input_data = np.array(val_encoder_dense_input_data)
-            val_encoder_sparse_input_data = np.array(val_encoder_sparse_input_data)
-            val_decoder_dense_input_data = np.array(val_decoder_dense_input_data)
-            val_decoder_sparse_input_data = np.array(val_decoder_sparse_input_data)
-            val_output_data = np.array(val_output_data)
-            val_weight_data = np.array(val_weight_data)
-            val_encoder_pos_data = np.array(val_encoder_pos_data)
-            val_decoder_pos_data = np.array(val_decoder_pos_data)
+            val_encoder_dense_input_data = np.array(list(map(list, zip(*val_encoder_dense_input_data))))
+            val_encoder_sparse_input_data = np.array(list(map(list, zip(*val_encoder_sparse_input_data))))
+            val_decoder_dense_input_data = np.array(list(map(list, zip(*val_decoder_dense_input_data))))
+            val_decoder_sparse_input_data = np.array(list(map(list, zip(*val_decoder_sparse_input_data))))
+            val_output_data = np.array(list(map(list, zip(*val_output_data))))
+            val_weight_data = np.array(list(map(list, zip(*val_weight_data))))
+            val_encoder_pos_data = np.array(list(map(list, zip(*val_encoder_pos_data))))
+            val_decoder_pos_data = np.array(list(map(list, zip(*val_decoder_pos_data))))
 
-            predict_encoder_dense_input_data = np.array(predict_encoder_dense_input_data)
-            predict_encoder_sparse_input_data = np.array(predict_encoder_sparse_input_data)
-            predict_decoder_dense_input_data = np.array(predict_decoder_dense_input_data)
-            predict_decoder_sparse_input_data = np.array(predict_decoder_sparse_input_data)
-            predict_encoder_pos_data = np.array(predict_encoder_pos_data)
-            predict_decoder_pos_data = np.array(predict_decoder_pos_data)
+            predict_encoder_dense_input_data = np.array(list(map(list, zip(*predict_encoder_dense_input_data))))
+            predict_encoder_sparse_input_data = np.array(list(map(list, zip(*predict_encoder_sparse_input_data))))
+            predict_decoder_dense_input_data = np.array(list(map(list, zip(*predict_decoder_dense_input_data))))
+            predict_decoder_sparse_input_data = np.array(list(map(list, zip(*predict_decoder_sparse_input_data))))
+            predict_encoder_pos_data = np.array(list(map(list, zip(*predict_encoder_pos_data))))
+            predict_decoder_pos_data = np.array(list(map(list, zip(*predict_decoder_pos_data))))
 
             self.fit_model(_bin,
                            [train_encoder_dense_input_data, train_encoder_sparse_input_data, train_encoder_pos_data
@@ -300,18 +364,18 @@ class InformerModel(BaseModel):
 
     def create_informer_model(self):
         ##input
-        encoder_dense_input = Input(shape=(self.encoder_timesteps, len(self.encoder_dense_feature_cols)),
+        encoder_dense_input = Input(shape=(self.id_nums, self.encoder_timesteps, len(self.encoder_dense_feature_cols)),
                                     name='encoder_dense_input')
-        encoder_sparse_input = Input(shape=(self.encoder_timesteps, len(self.encoder_sparse_feature_cols)),
+        encoder_sparse_input = Input(shape=(self.id_nums, self.encoder_timesteps, len(self.encoder_sparse_feature_cols)),
                                      name='encoder_sparse_input')
-        encoder_pos_input = Input(shape=(self.encoder_timesteps, 1), name='encoder_pos_input')
-        decoder_dense_input = Input(shape=(
+        encoder_pos_input = Input(shape=(self.id_nums, self.encoder_timesteps, 1), name='encoder_pos_input')
+        decoder_dense_input = Input(shape=(self.id_nums,
             self.decoder_timesteps + self.custom_params['start_token_len'], len(self.decoder_dense_feature_cols) + 1),
             name='decoder_dense_input')
-        decoder_sparse_input = Input(shape=(
+        decoder_sparse_input = Input(shape=(self.id_nums,
             self.decoder_timesteps + self.custom_params['start_token_len'], len(self.decoder_sparse_feature_cols)),
             name='decoder_sparse_input')
-        decoder_pos_input = Input(shape=(self.decoder_timesteps + self.custom_params['start_token_len'], 1),
+        decoder_pos_input = Input(shape=(self.id_nums, self.decoder_timesteps + self.custom_params['start_token_len'], 1),
                                   name='decoder_pos_input')
 
         ##embedding
@@ -322,19 +386,19 @@ class InformerModel(BaseModel):
         pos_emds = Embedding(np.max([self.encoder_timesteps, self.custom_params['start_token_len']]) + self.decoder_timesteps, self.model_params['embedding_size'],
                              embeddings_regularizer=tf.keras.regularizers.l2(self.model_params['l2_reg']))
 
-        encoder_sparse_emd = (Concatenate(axis=2)([sparse_emds[self.encoder_sparse_feature_index[i]](
-            encoder_sparse_input[:, :, i]) for i in range(len(self.encoder_sparse_feature_cols))]))
+        encoder_sparse_emd = (Concatenate(axis=3)([sparse_emds[self.encoder_sparse_feature_index[i]](
+            encoder_sparse_input[:, :, :, i]) for i in range(len(self.encoder_sparse_feature_cols))]))
 
-        encoder_pos_emd = tf.keras.layers.Reshape((-1, 32))(pos_emds(encoder_pos_input))
+        encoder_pos_emd = pos_emds(encoder_pos_input)[:,:,:,0,:]
 
-        decoder_sparse_emd = (Concatenate(axis=2)([sparse_emds[self.decoder_sparse_feature_index[i]](
-            decoder_sparse_input[:, :, i]) for i in range(len(self.decoder_sparse_feature_cols))]))
-        decoder_pos_emd = tf.keras.layers.Reshape((-1, 32))(pos_emds(decoder_pos_input))
+        decoder_sparse_emd = (Concatenate(axis=3)([sparse_emds[self.decoder_sparse_feature_index[i]](
+            decoder_sparse_input[:, :, :, i]) for i in range(len(self.decoder_sparse_feature_cols))]))
+        decoder_pos_emd = pos_emds(decoder_pos_input)[:,:,:,0,:]
         ##encoder
         encoder_input = Dense(512, kernel_regularizer=tf.keras.regularizers.l2(self.model_params['l2_reg']))(
-            Concatenate(axis=2)([encoder_dense_input, encoder_sparse_emd, encoder_pos_emd]))
+            Concatenate(axis=3)([encoder_dense_input, encoder_sparse_emd, encoder_pos_emd]))
         decoder_input = Dense(512, kernel_regularizer=tf.keras.regularizers.l2(self.model_params['l2_reg']))(
-            Concatenate(axis=2)([decoder_dense_input, decoder_sparse_emd, decoder_pos_emd]))
+            Concatenate(axis=3)([decoder_dense_input, decoder_sparse_emd, decoder_pos_emd]))
 
         encoder_input = LayerNormalization()(encoder_input)
         encoder_input = Activation('relu')(encoder_input)
@@ -347,12 +411,12 @@ class InformerModel(BaseModel):
         #        transformer_layer = Informer(num_layers=2, d_model=512, num_heads=8, ff_dim=512,
         #                                        output_dims=self.model_params['dense_dims'], l2_reg=self.model_params['l2_reg'])
 
-        transformer_layer = Informer(enc_in=self.model_params['enc_in'], dec_in=self.model_params['dec_in'], c_out=self.model_params['c_out'], seq_len=self.encoder_timesteps, label_len=0,
+        transformer_layer = STInformer(enc_in=self.model_params['enc_in'], dec_in=self.model_params['dec_in'], c_out=self.model_params['c_out'], seq_len=self.encoder_timesteps, label_len=0,
                                      out_len=self.decoder_timesteps, out_len_start=self.decoder_timesteps_start, batch_size=self.model_params['batch_size'],
                                      factor=self.model_params['factor'], d_model=self.model_params['d_model'], n_heads=self.model_params['n_heads'], e_layers=self.model_params['e_layers'], d_layers=self.model_params['d_layers'], d_ff=self.model_params['d_ff'],
                                      dropout=self.model_params['dropout'], attn=self.model_params['attn_type'], activation=self.model_params['activation'])
 
-        output = transformer_layer([encoder_input, decoder_input])
+        output = transformer_layer([encoder_input, decoder_input], self.attn_mask, self.attn_mask, self.attn_mask)
 
         seq2seq_model = tf.keras.models.Model(
             [encoder_dense_input, encoder_sparse_input, encoder_pos_input, decoder_dense_input, decoder_sparse_input,
@@ -373,12 +437,12 @@ class InformerModel(BaseModel):
         return seq2seq_model
 
 
-class Informer(tf.keras.layers.Layer):
+class STInformer(tf.keras.layers.Layer):
 
     def __init__(self, enc_in, dec_in, c_out, seq_len, label_len, out_len, out_len_start, batch_size,
                  factor=1, d_model=512, n_heads=8, e_layers=3, d_layers=2, d_ff=512,
                  dropout=0.0, attn='prob', activation='gelu', have_enc=True):
-        super(Informer, self).__init__()
+        super(STInformer, self).__init__()
         self.pred_len = out_len
         self.pred_len_start = out_len_start
         self.attn = attn
@@ -391,13 +455,15 @@ class Informer(tf.keras.layers.Layer):
         # self.enc_embedding = DataEmbedding(enc_in, d_model, embed, data, dropout)
         # self.dec_embedding = DataEmbedding(dec_in, d_model, embed, data, dropout)
         # Attention
-        Attn = ProbAttention if attn == 'prob' else FullAttention
+        Attn = ProbAttention if attn == 'prob' else STFullAttention
         print("attn_type:{}".format(attn))
         # Encoder
         self.encoder = Encoder(
             [
                 EncoderLayer(
-                    AttentionLayer(Attn(False, factor, attention_dropout=dropout),
+                    AttentionLayer(FullAttention(False, factor, attention_dropout=dropout),
+                                   d_model, n_heads),
+                    AttentionLayer(SFullAttention(False, factor, attention_dropout=dropout),
                                    d_model, n_heads),
                     d_model,
                     d_ff,
@@ -417,6 +483,8 @@ class Informer(tf.keras.layers.Layer):
             [
                 DecoderLayer(
                     AttentionLayer(FullAttention(True, factor, attention_dropout=dropout),
+                                   d_model, n_heads),
+                    AttentionLayer(SFullAttention(True, factor, attention_dropout=dropout),
                                    d_model, n_heads),
                     AttentionLayer(FullAttention(False, factor, attention_dropout=dropout),
                                    d_model, n_heads),
@@ -455,13 +523,13 @@ class Informer(tf.keras.layers.Layer):
 
         dec_out = self.projection(dec_out)
 
-        return dec_out[:, (-self.pred_len+self.pred_len_start-1):, :]  # [B, L, D]
+        return dec_out[:, :, (-self.pred_len+self.pred_len_start-1):, :]  # [B, N, L, D]
 
 
 if __name__ == '__main__':
-    model = Informer(7, 7, 7, 96, 48, 24, 32)
-    x_enc = tf.zeros((32, 96, 7))
-    x_dec = tf.zeros((32, 72, 7))
-    x_mark_enc = tf.zeros((32, 96, 4))
-    x_mark_dec = tf.zeros((32, 72, 4))
+    model = STInformer(7, 7, 7, 96, 48, 24, 32)
+    x_enc = tf.zeros((32, 10, 96, 7))
+    x_dec = tf.zeros((32, 10, 72, 7))
+    x_mark_enc = tf.zeros((32, 10, 96, 4))
+    x_mark_dec = tf.zeros((32, 10, 72, 4))
     print(model([x_enc, x_dec, x_mark_enc, x_mark_dec]).shape)

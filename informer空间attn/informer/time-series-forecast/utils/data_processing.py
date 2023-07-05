@@ -78,6 +78,7 @@ class DataReader:
         parser.add_argument("--weight_half_life", type=int, required=False, default=30, help='时间衰减半衰期')
         parser.add_argument("--weight_minimum", type=float, required=False, default=1, help='时间衰减最小值')
         parser.add_argument("--forecast_days", type=int, required=False, default=30, help='预测天数')
+        parser.add_argument("--forecast_days_start", type=int, required=False, default=1, help='预测天数起始')
         parser.add_argument("--validation_days", type=int, required=False, default=0, help='验证集天数')
         parser.add_argument("--huber_slope_quantile", type=float, required=False, default=1, help='huber_loss超参分位数')
         parser.add_argument("--drop_covid19", type=int, required=False, default=0, help='去除疫情期间数据：0-不去除，1-去除疫情高峰期，2-去除2020-2022三年，3-去除2020,2022两年')

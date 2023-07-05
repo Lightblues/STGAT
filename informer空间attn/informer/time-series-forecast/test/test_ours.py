@@ -18,6 +18,7 @@ sys.path.append(parent_path)
 # os.environ["PYSPARK_PYTHON"] = "/usr/bin/python3.6.5"
 from models.base.base_model import BaseModel
 from models.transformer.informer.informer import InformerModel
+from models.transformer.STinformer.STinformer import STInformerModel
 from utils.data_processing import DataReader
 
 
@@ -28,8 +29,10 @@ logging.basicConfig(stream=sys.stderr, level=logging.WARNING, format=
 '''[%(filename)s:%(funcName)s:%(lineno)d]: %(message)s''')
 
 if __name__ == "__main__":
-    debug_args = ["--model_class", "InformerModel"
-        , "--model_name", "informer_v1.0"
+    debug_args = [
+        # "--model_class", "InformerModel"
+        "--model_class", "STInformerModel"
+        , "--model_name", "stinformer_v1.0"
         , "--cur_date", "2023-05-24"
         , "--data_pattern", "csv"
         , "--data_path", data_path
@@ -63,6 +66,7 @@ if __name__ == "__main__":
         , "--rank_limit", "3"
         # 预测天数
         , "--forecast_days", "30"
+        , '--forecast_days_start', "1"
         # 验证天数,一般取7
         , "--validation_days", "7"
         # 自定义模型参数, 比较重要的是encoder_timesteps, 表示过去的观测序列长度。一般取60
@@ -75,7 +79,7 @@ if __name__ == "__main__":
                   ]
     mode = 'debug'
     args = DataReader.get_args(mode=mode, debug_args=debug_args)
-    Model:InformerModel = getattr(sys.modules[__name__], args.model_class)
+    Model:STInformerModel = getattr(sys.modules[__name__], args.model_class)
     model = Model(args)
     model.pipline()
 #    model.read_data()

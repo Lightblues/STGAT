@@ -36,7 +36,7 @@ class FullAttention(Layer):
 
 
 class ProbAttention(Layer):
-    def __init__(self, mask_flag=True, factor=5, scale=None, attention_dropout=0.1):
+    def __init__(self, mask_flag=True, factor=1, scale=None, attention_dropout=0.1):
         super(ProbAttention, self).__init__()
         self.factor = factor
         self.scale = scale
@@ -60,22 +60,22 @@ class ProbAttention(Layer):
         K_expand = tf.tile(tf.expand_dims(K, -3), (1, 1, S, 1, 1))
 
 
-        indx_q_seq = tf.random.uniform((S,), maxval=L, dtype=tf.int32)
+#        indx_q_seq = tf.random.uniform((S,), maxval=L, dtype=tf.int32)
         indx_k_seq = tf.random.uniform((sample_k,), maxval=L, dtype=tf.int32)
 
-        K_sample = tf.gather(K_expand, tf.range(S), axis=2)
-
-        K_sample = tf.gather(K_sample, indx_q_seq, axis=2)
-        K_sample = tf.gather(K_sample, indx_k_seq, axis=3)
+#        K_sample = tf.gather(K_expand, tf.range(S), axis=2)
+#        K_sample = tf.gather(K_sample, indx_q_seq, axis=2)
+#        K_sample = tf.gather(K_sample, indx_k_seq, axis=3)
+        K_sample = tf.gather(K_expand, indx_k_seq, axis=3)
 
         Q_K_sample = tf.squeeze(tf.matmul(tf.expand_dims(Q, -2), tf.einsum("...ij->...ji", K_sample)))
         # find the Top_k query with sparisty measurement
         M = tf.math.reduce_max(Q_K_sample, axis=-1) - tf.raw_ops.Div(x=tf.reduce_sum(Q_K_sample, axis=-1), y=L)
         M_top = tf.math.top_k(M, n_top, sorted=False)[1]
 #        batch_indexes = tf.tile(tf.range(Q.shape[0])[:, tf.newaxis, tf.newaxis], (1, Q.shape[1], n_top))
-        batch_indexes = tf.tile(tf.range(256)[:, tf.newaxis, tf.newaxis], (1, Q.shape[1], n_top))
+        batch_indexes = tf.tile(tf.range(B)[:, tf.newaxis, tf.newaxis], (1, Q.shape[1], n_top))
 #        head_indexes = tf.tile(tf.range(Q.shape[1])[tf.newaxis, :, tf.newaxis], (Q.shape[0], 1, n_top))
-        head_indexes = tf.tile(tf.range(Q.shape[1])[tf.newaxis, :, tf.newaxis], (256, 1, n_top))
+        head_indexes = tf.tile(tf.range(Q.shape[1])[tf.newaxis, :, tf.newaxis], (B, 1, n_top))
         idx = tf.stack(values=[batch_indexes, head_indexes, M_top], axis=-1)
 
         # use the reduced Q to calculate Q_K
@@ -88,46 +88,54 @@ class ProbAttention(Layer):
     def _get_initial_context(self, V, L_Q):
         B, H, L_V, D = V.shape
         B = tf.shape(V)[0]
-        if not self.mask_flag:
-            V_sum = tf.reduce_sum(V, -2)
-#            contex = tf.identity(tf.broadcast_to(tf.expand_dims(V_sum, -2), [B, H, L_Q, V_sum.shape[-1]]))
-            contex = tf.identity(tf.tile(tf.expand_dims(V_sum, -2), [1, 1, L_Q, 1]))
-        else:  # use mask
-            assert (L_Q == L_V)  # requires that L_Q == L_V, i.e. for self-attention only
-            contex = tf.math.cumsum(V, axis=-1)
+#        if not self.mask_flag:
+#            V_sum = tf.reduce_sum(V, -2)
+##            contex = tf.identity(tf.broadcast_to(tf.expand_dims(V_sum, -2), [B, H, L_Q, V_sum.shape[-1]]))
+#            contex = tf.identity(tf.tile(tf.expand_dims(V_sum, -2), [1, 1, L_Q, 1]))
+#        else:  # use mask
+#            assert (L_Q == L_V)  # requires that L_Q == L_V, i.e. for self-attention only
+#            contex = tf.math.cumsum(V, axis=-1)
+
+        V_sum = tf.reduce_sum(V, -2)
+        contex = tf.identity(tf.tile(tf.expand_dims(V_sum, -2), [1, 1, L_Q, 1]))
         return contex
 
     def _update_context(self, context_in, V, scores, index, L_Q):
         B, H, L_V, D = V.shape
         B = tf.shape(V)[0]
-        if self.mask_flag:
-            attn_mask = ProbMask(B, H, L_Q, index, scores)
-
-            # scores.masked_fill_(attn_mask.mask, -np.inf)
-            num = 3.4 * math.pow(10, 38)
-            scores = (scores * attn_mask.mask) + (-((attn_mask.mask * num + num) - num))
+#        if self.mask_flag:
+#            attn_mask = ProbMask(B, H, L_Q, index, scores)
+#
+#            # scores.masked_fill_(attn_mask.mask, -np.inf)
+#            num = 3.4 * math.pow(10, 38)
+#            scores = (scores * attn_mask.mask) + (-((attn_mask.mask * num + num) - num))
 
         attn = tf.keras.activations.softmax(scores, axis=-1)  # nn.Softmax(dim=-1)(scores)
 #        batch_indexes = tf.tile(tf.range(V.shape[0])[:, tf.newaxis, tf.newaxis], (1, V.shape[1], index.shape[-1]))
 #        head_indexes = tf.tile(tf.range(V.shape[1])[tf.newaxis, :, tf.newaxis], (V.shape[0], 1, index.shape[-1]))
 
-        batch_indexes = tf.tile(tf.range(256)[:, tf.newaxis, tf.newaxis], (1, V.shape[1], 25))
-        head_indexes = tf.tile(tf.range(V.shape[1])[tf.newaxis, :, tf.newaxis], (256, 1, 25))
+        batch_indexes = tf.tile(tf.range(B)[:, tf.newaxis, tf.newaxis], (1, V.shape[1], scores.shape[2]))
+        head_indexes = tf.tile(tf.range(V.shape[1])[tf.newaxis, :, tf.newaxis], (B, 1, scores.shape[2]))
         idx = tf.stack(values=[batch_indexes, head_indexes, index], axis=-1)
 
         context_in = tf.tensor_scatter_nd_update(context_in, idx, tf.matmul(attn, V))
 
         return tf.convert_to_tensor(context_in)
 
+    @tf.function
     def call(self, inputs, attn_mask=None):
         queries, keys, values = inputs
         B, L, H, D = queries.shape
         B = tf.shape(queries)[0]
         _, S, _, _ = keys.shape
 
-        queries = tf.reshape(queries, (B, H, L, -1))
-        keys = tf.reshape(keys, (B, H, S, -1))
-        values = tf.reshape(values, (B, H, S, -1))
+#        queries = tf.reshape(queries, (B, H, L, -1))
+#        keys = tf.reshape(keys, (B, H, S, -1))
+#        values = tf.reshape(values, (B, H, S, -1))
+
+        queries = tf.reshape(queries, (B, H, L, 64))
+        keys = tf.reshape(keys, (B, H, S, 64))
+        values = tf.reshape(values, (B, H, S, 64))
 
         U = self.factor * np.ceil(np.log(S)).astype('int').item()
         u = self.factor * np.ceil(np.log(L)).astype('int').item()
@@ -189,7 +197,7 @@ class AttentionLayer(Layer):
 #                                       initializer='random_normal',
 #                                       trainable=True,
 #                                       name='values')
-
+    @tf.function
     def call(self, inputs, attn_mask=None):
         queries, keys, values = inputs
         B, L, _ = queries.shape
