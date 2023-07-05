@@ -47,6 +47,7 @@ class DataReader:
     def get_args(mode="run", debug_args={}):
         logger.info(">>>>>>>>>>Start reading configurations:")
         parser = argparse.ArgumentParser()
+        parser.add_argument("--mode", type=str, required=False, default='run', help='运行模式：run-运行，debug-调试')
         parser.add_argument("--model_class", type=str, required=True, help='模型类')
         parser.add_argument("--model_name", type=str, required=True, help='模型名称')
         parser.add_argument("--model_type", type=str, required=False, default=None, help='模型类型：single_model-单模型，multi_model-多模型')
@@ -77,8 +78,8 @@ class DataReader:
         parser.add_argument("--differential_col", type=str, required=False, default=None, help='差分列')
         parser.add_argument("--weight_half_life", type=int, required=False, default=30, help='时间衰减半衰期')
         parser.add_argument("--weight_minimum", type=float, required=False, default=1, help='时间衰减最小值')
+        parser.add_argument("--forecast_days_start", type=int, required=False, default=1, help='预测天数起始日期')
         parser.add_argument("--forecast_days", type=int, required=False, default=30, help='预测天数')
-        parser.add_argument("--forecast_days_start", type=int, required=False, default=1, help='预测天数起始')
         parser.add_argument("--validation_days", type=int, required=False, default=0, help='验证集天数')
         parser.add_argument("--huber_slope_quantile", type=float, required=False, default=1, help='huber_loss超参分位数')
         parser.add_argument("--drop_covid19", type=int, required=False, default=0, help='去除疫情期间数据：0-不去除，1-去除疫情高峰期，2-去除2020-2022三年，3-去除2020,2022两年')
@@ -95,11 +96,96 @@ class DataReader:
         return parser.parse_args()
 
 class DataGenerater:
+
+    @staticmethod
+    def encoder_decoder_data_generater_spacial(ids, sdf, validation_days, encoder_timesteps, decoder_timesteps,
+                                       encoder_dense_feature_cols, encoder_sparse_feature_cols,
+                                       decoder_dense_feature_cols, decoder_sparse_feature_cols,
+                                       decoder_output_col, train_date_gap=1, differential_col=None, start_token_len=0, decoder_timesteps_start=1):
+
+        sdf.reset_index(drop=True, inplace=True)
+        train_encoder_dense_input_data = []
+        train_encoder_sparse_input_data = []
+        train_decoder_dense_input_data = []
+        train_decoder_sparse_input_data = []
+        train_output_data = []
+        train_weight_data = []
+        train_encoder_pos_data = []
+        train_decoder_pos_data = []
+
+        val_encoder_dense_input_data = []
+        val_encoder_sparse_input_data = []
+        val_decoder_dense_input_data = []
+        val_decoder_sparse_input_data = []
+        val_output_data = []
+        val_weight_data = []
+        val_encoder_pos_data = []
+        val_decoder_pos_data = []
+
+        predict_encoder_dense_input_data = []
+        predict_encoder_sparse_input_data = []
+        predict_decoder_dense_input_data = []
+        predict_decoder_sparse_input_data = []
+        predict_encoder_pos_data = []
+        predict_decoder_pos_data = []
+
+        fsdf = sdf[sdf['date']<='2019-12-31']
+
+
+        for i in range(fsdf.shape[0] - encoder_timesteps - 2 * decoder_timesteps - validation_days, 0,
+                       -train_date_gap):
+            train_encoder_dense_input_data.append(
+                [fsdf.iloc[i + j][encoder_dense_feature_cols].values.astype(np.float32) for j in
+                 range(encoder_timesteps)])
+            train_encoder_sparse_input_data.append(
+                [fsdf.iloc[i + j][encoder_sparse_feature_cols].values.astype(np.float32) for j in
+                 range(encoder_timesteps)])
+            train_decoder_dense_input_data.append([np.append(fsdf.iloc[i+encoder_timesteps-1][['value_advance_{}d'.format(j-start_token_len+1)]].values if 'value_advance_{}d'.format(j-start_token_len+1) in fsdf.columns else [0], values=fsdf.iloc[i + j + encoder_timesteps - start_token_len][
+                decoder_dense_feature_cols].values).astype(np.float32) if j >= start_token_len else
+                fsdf.iloc[i + j + encoder_timesteps - start_token_len][
+                ['value'] + decoder_dense_feature_cols].values.astype(
+                np.float32) for
+                j in range(decoder_timesteps + start_token_len)])
+            train_decoder_sparse_input_data.append(
+                [fsdf.iloc[i + j + encoder_timesteps - start_token_len][decoder_sparse_feature_cols].values.astype(
+                    np.float32)
+                    for j in range(decoder_timesteps + start_token_len)])
+            #            train_output_data.append(
+            #                [fsdf.iloc[i + j + encoder_timesteps][decoder_output_col].values.astype(np.float32) for j in
+            #                 range(decoder_timesteps)])
+            # differential
+            if differential_col is not None:
+                train_output_data.append(
+                    [fsdf.iloc[i + j + encoder_timesteps][decoder_output_col].values.astype(np.float32) -
+                     fsdf.iloc[i + encoder_timesteps - 1][decoder_output_col].values.astype(np.float32) for j in
+                     range(decoder_timesteps_start-1, decoder_timesteps)])
+            else:
+                train_output_data.append(
+                    [fsdf.iloc[i + j + encoder_timesteps][decoder_output_col].values.astype(np.float32) for j in
+                     range(decoder_timesteps_start-1, decoder_timesteps)])
+
+            train_weight_data.append(
+                fsdf.iloc[i + encoder_timesteps + decoder_timesteps - 1]['weight'].astype(np.float32))
+
+            if encoder_timesteps>=start_token_len:
+                train_encoder_pos_data.append(
+                    [[j] for j in range(encoder_timesteps)])
+                train_decoder_pos_data.append(
+                    [[j] for j in range(encoder_timesteps-start_token_len, encoder_timesteps + decoder_timesteps)])
+            else:
+                train_encoder_pos_data.append(
+                    [[j] for j in range(start_token_len-encoder_timesteps, start_token_len)])
+                train_decoder_pos_data.append(
+                    [[j] for j in range(start_token_len + decoder_timesteps)])
+
+
+
+
     @staticmethod
     def encoder_decoder_data_generater(id, sdf, validation_days, encoder_timesteps, decoder_timesteps,
                                        encoder_dense_feature_cols, encoder_sparse_feature_cols,
                                        decoder_dense_feature_cols, decoder_sparse_feature_cols,
-                                       decoder_output_col, train_date_gap=1, differential_col=None, start_token_len=0):
+                                       decoder_output_col, train_date_gap=1, differential_col=None, start_token_len=0, decoder_timesteps_start=1):
 
         sdf.reset_index(drop=True, inplace=True)
         train_encoder_dense_input_data = []
@@ -154,19 +240,25 @@ class DataGenerater:
                 train_output_data.append(
                     [fsdf.iloc[i + j + encoder_timesteps][decoder_output_col].values.astype(np.float32) -
                      fsdf.iloc[i + encoder_timesteps - 1][decoder_output_col].values.astype(np.float32) for j in
-                     range(decoder_timesteps)])
+                     range(decoder_timesteps_start-1, decoder_timesteps)])
             else:
                 train_output_data.append(
                     [fsdf.iloc[i + j + encoder_timesteps][decoder_output_col].values.astype(np.float32) for j in
-                     range(decoder_timesteps)])
+                     range(decoder_timesteps_start-1, decoder_timesteps)])
 
             train_weight_data.append(
                 fsdf.iloc[i + encoder_timesteps + decoder_timesteps - 1]['weight'].astype(np.float32))
 
-            train_encoder_pos_data.append(
-                [[j] for j in range(encoder_timesteps)])
-            train_decoder_pos_data.append(
-                [[j] for j in range(encoder_timesteps-start_token_len, encoder_timesteps + decoder_timesteps)])
+            if encoder_timesteps>=start_token_len:
+                train_encoder_pos_data.append(
+                    [[j] for j in range(encoder_timesteps)])
+                train_decoder_pos_data.append(
+                    [[j] for j in range(encoder_timesteps-start_token_len, encoder_timesteps + decoder_timesteps)])
+            else:
+                train_encoder_pos_data.append(
+                    [[j] for j in range(start_token_len-encoder_timesteps, start_token_len)])
+                train_decoder_pos_data.append(
+                    [[j] for j in range(start_token_len + decoder_timesteps)])
 
          
         if sdf[sdf['date']>='2022-12-01'].shape[0] - encoder_timesteps - 2 * decoder_timesteps - validation_days>0:
@@ -197,19 +289,27 @@ class DataGenerater:
                     train_output_data.append(
                         [fsdf.iloc[i + j + encoder_timesteps][decoder_output_col].values.astype(np.float32) -
                         fsdf.iloc[i + encoder_timesteps - 1][decoder_output_col].values.astype(np.float32) for j in
-                        range(decoder_timesteps)])
+                        range(decoder_timesteps_start-1, decoder_timesteps)])
                 else:
                     train_output_data.append(
                         [fsdf.iloc[i + j + encoder_timesteps][decoder_output_col].values.astype(np.float32) for j in
-                        range(decoder_timesteps)])
+                        range(decoder_timesteps_start-1, decoder_timesteps)])
 
                 train_weight_data.append(
                     fsdf.iloc[i + encoder_timesteps + decoder_timesteps - 1]['weight'].astype(np.float32))
 
-                train_encoder_pos_data.append(
-                    [[j] for j in range(encoder_timesteps)])
-                train_decoder_pos_data.append(
-                    [[j] for j in range(encoder_timesteps-start_token_len, encoder_timesteps + decoder_timesteps)])
+                if encoder_timesteps >= start_token_len:
+                    train_encoder_pos_data.append(
+                        [[j] for j in range(encoder_timesteps)])
+                    train_decoder_pos_data.append(
+                        [[j] for j in
+                         range(encoder_timesteps - start_token_len, encoder_timesteps + decoder_timesteps)])
+                else:
+                    train_encoder_pos_data.append(
+                        [[j] for j in range(start_token_len - encoder_timesteps, start_token_len)])
+                    train_decoder_pos_data.append(
+                        [[j] for j in range(start_token_len + decoder_timesteps)])
+
 
 
         for i in range(fsdf.shape[0] - encoder_timesteps - 2 * decoder_timesteps,
@@ -235,18 +335,28 @@ class DataGenerater:
                 val_output_data.append(
                     [fsdf.iloc[i + j + encoder_timesteps][decoder_output_col].values.astype(np.float32) -
                      fsdf.iloc[i + encoder_timesteps - 1][decoder_output_col].values.astype(np.float32) for j in
-                     range(decoder_timesteps)])
+                     range(decoder_timesteps_start-1, decoder_timesteps)])
             else:
                 val_output_data.append(
                     [fsdf.iloc[i + j + encoder_timesteps][decoder_output_col].values.astype(np.float32) for j in
-                     range(decoder_timesteps)])
+                     range(decoder_timesteps_start-1, decoder_timesteps)])
             val_weight_data.append(
                 fsdf.iloc[i + encoder_timesteps + decoder_timesteps - 1]['weight'].astype(np.float32))
 
-            val_encoder_pos_data.append(
-                [[j] for j in range(encoder_timesteps)])
-            val_decoder_pos_data.append(
-                [[j] for j in range(encoder_timesteps-start_token_len, encoder_timesteps + decoder_timesteps)])
+
+            if encoder_timesteps>=start_token_len:
+                val_encoder_pos_data.append(
+                    [[j] for j in range(encoder_timesteps)])
+                val_decoder_pos_data.append(
+                    [[j] for j in range(encoder_timesteps-start_token_len, encoder_timesteps + decoder_timesteps)])
+            else:
+                val_encoder_pos_data.append(
+                    [[j] for j in range(start_token_len-encoder_timesteps, start_token_len)])
+                val_decoder_pos_data.append(
+                    [[j] for j in range(start_token_len + decoder_timesteps)])
+
+
+
 
         i = sdf.shape[0] - encoder_timesteps - decoder_timesteps
 
@@ -267,10 +377,16 @@ class DataGenerater:
                 np.float32)
                 for j in range(decoder_timesteps + start_token_len)])
 
-        predict_encoder_pos_data.append(
-            [[j] for j in range(encoder_timesteps)])
-        predict_decoder_pos_data.append(
-            [[j] for j in range(encoder_timesteps-start_token_len, encoder_timesteps + decoder_timesteps)])
+        if encoder_timesteps >= start_token_len:
+            predict_encoder_pos_data.append(
+                [[j] for j in range(encoder_timesteps)])
+            predict_decoder_pos_data.append(
+                [[j] for j in range(encoder_timesteps - start_token_len, encoder_timesteps + decoder_timesteps)])
+        else:
+            predict_encoder_pos_data.append(
+                [[j] for j in range(start_token_len - encoder_timesteps, start_token_len)])
+            predict_decoder_pos_data.append(
+                [[j] for j in range(start_token_len + decoder_timesteps)])
 
 #        logger.info('The data of id{} are done!'.format(id))
         return (train_encoder_dense_input_data, train_encoder_sparse_input_data, train_decoder_dense_input_data,
