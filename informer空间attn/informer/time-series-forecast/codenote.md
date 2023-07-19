@@ -3,7 +3,7 @@
 
 ### InformerModel
 
-debug技巧: Keras模型设置 `seq2seq_model.run_eagerly = True`, 这样就可以在fit的时候打断点了
+debug技巧: Keras模型设置 `seq2seq_model.run_eagerly = True`, 这样就可以在fit的时候打断点了 (进入调试)
 [doc](https://keras.io/examples/keras_recipes/debugging_tips/)
 
 ```python
