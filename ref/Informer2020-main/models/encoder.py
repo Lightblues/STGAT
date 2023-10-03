@@ -96,3 +96,18 @@ class EncoderStack(nn.Module):
         x_stack = torch.cat(x_stack, -2)
         
         return x_stack, attns
+
+
+if __name__=="__main__":
+    # encoder = Encoder(
+    #     [
+    #         EncoderLayer(
+    #             AttentionLayer(Attn(False, factor, attention_dropout=dropout, output_attention=output_attention), 
+    #                         d_model, n_heads, mix=False),
+    #             d_model,
+    #             d_ff,
+    #             dropout=dropout,
+    #             activation=activation
+    #         ) for l in range(e_layers)
+    #     ]
+    pass
